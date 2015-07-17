@@ -1,0 +1,56 @@
+Cone				Zhongu				Thebo				Purik				Shigatse
+code				code				code				code				code
+																
+																
+																
+																
+ABB				ABB				ABB				ABB				(B,C)(B,C)(B,C)
+																
+																
+																
+A(B,C)(B,C)				(A,B,C)(A,B,C)(A,B,C)				AAA				A(B,C)(B,C)				
+ABB								ABB				ABB				BBB
+BBB				BBB				BBB				BBB				BBB
+A(B,C)(B,C)				A(B,C)(B,C)				A(B,C)(B,C)				A(B,C)(B,C)				
+(A,C)(A,C)(A,C)				AA''A''				(A,C)(A,C)(A,C)				ACC				BBB
+ABC								AB'C				ABC				AB'C
+																
+																
+																
+(A,B)(A,B)(A,B)				ABB				(A,B)(A,B)(A,B)				AB'B'				
+AAA				AAA				AAA				AAA				AAA
+																
+																
+																
+ABB				A(B,C)(B,C)								A'B'B'				
+																
+BBB				(A,B,C)(A,B,C)(A,B,C)				ABC				A'B'B'				BBC
+A(B,C)(B,C)				(A,B,C)(A,B,C)(A,B,C)												(B,C)(B,C)(B,C)
+AAA				AAA				AAA				AAA				A'A'A'
+AAA				(A,B)(A,B)(A,B)				BBB								
+																
+(A,B)(A,B)C				(A,B)(A,B)(A,B)				(A,B)(A,B)C				ABB				C'C'C'
+AAC				AAA				AAC				AB'B'				
+																
+ABB				A(B,C)(B,C)								A'B'B'				
+A(B,C)(B,C)				AAA				A'(B,C)(B,C)				A(B,C)(B,C)				
+																
+ABC																
+AAA																
+																
+(A,B,C)(A,B,C)(A,B,C)				(A,B,C)(A,B,C)(A,B,C)				(A,B,C)(A,B,C)(A,B,C)				A(B,C)(B,C)				(A,B,C)(A,B,C)(A,B,C)
+(A,B,C)(A,B,C)(A,B,C)				(A,B)(A,B)(A,B)				(A,B,C)(A,B,C)(A,B,C)								
+AAA				AAA				AAA				AAA				AAA
+ABC				ABC				ABC				A'BB				
+																
+																
+A'''A'''A'''				A''A''A''				A''A''A''								
+																
+(A,B)(A,B)C				(A,B)(A,B)(A,B)				(A,B)(A,B)C				BBB				BBC
+A(B,C)(B,C)				(A,B,C)(A,B,C)(A,B,C)				A(B,C)(B,C)				A(B,C)(B,C)				(B,C)(B,C)(B,C)
+ABC																
+ABB																
+				(A,B,C)(A,B,C)(A,B,C)				(A,B,C)(A,B,C)(A,B,C)				A(B,C)(B,C)				
+																
+A'BB				A'BB				A'B'B'				A'BB				
+	
