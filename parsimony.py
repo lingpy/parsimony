@@ -255,8 +255,122 @@ def ftree(taxlist):
     
     return trees
 
+def clean_newick_string(newick):
+    """
+    Helper function to reduce all branch-lengths from a newick string.
+    """
+    start = newick
+    out = ''
+    
+    while start:
+        idxA = start.find(':') 
+        idxB = start.find(')')
 
-def all_nodes_of_binary_tree(newick):
+        colon = False
+
+        if idxA != -1 and idxB != -1:
+            if idxA < idxB:
+                idx = idxA
+                colon = True
+            else:
+                idx = idxB
+        elif idxA != -1:
+            idx = idxA
+            colon = True
+        elif idxB != -1:
+            idx = idxB
+        else:
+            return out + start
+        
+        if colon:
+            out += start[:idx]
+            start = start[idx+1:]
+            while start and (start[0].isdigit() or start[0] == '.'):
+                start = start[1:]
+        else:
+            out += start[:idx+1]
+            start = start[idx+1:]
+            while start and start[0] not in ',;)':
+                start = start[1:]
+    
+    out += start
+
+    return out
+
+def parse_newick(newick):
+    """
+    Function parses a newick tree to json format.
+
+    Notes
+    -----
+    The format is a dictionary with sufficient information to further parse the
+    tree, and also to use it as input for d3 and other javascript libraries.
+    """
+    
+    D = {}
+
+    if newick.endswith(';'):
+        newick = newick[:-1]
+    
+    nwk, label, blen = label_and_blen(newick)
+
+    D['('+clean_newick_string(nwk)+')'] = dict(
+            children=[], 
+            branch_length = blen, 
+            root=True,
+            leave=False,
+            label = label
+            )
+
+    for node,label, blen, parent in all_nodes_of_newick_tree(newick):
+
+        D[node] = dict(parent=parent, children=[], branch_length=blen, root=False)
+
+        if ',' in node:
+            D[node]['leave'] = False
+        else:
+            D[node]['leave'] = True
+        
+        D[parent]['children'] += [node]
+
+    return D
+
+def label_and_blen(nwk):
+    """
+    Helper function parses a Newick string and returns the highest-order label
+    and branch-length.
+    """
+    idx = nwk[::-1].find(')')
+
+    # no brackets means we are dealing with a leave node
+    if idx == -1:
+        nwk_base = nwk
+        idx = nwk[::-1].find(':')
+        if idx == -1:
+            return nwk, nwk, '0'
+        else:
+            nwk_base = nwk[:-idx-1]
+            return nwk_base, nwk_base, nwk[-idx:]
+    
+    # if index is 0, there's no label and no blen
+    elif idx == 0:
+        return nwk[1:-1], '', '0'
+
+    # else, we carry on
+    nwk_base = nwk[:-idx]
+    label = nwk[-idx:]
+
+    idx = label[::-1].find(':')
+    if idx == -1:
+        label = label
+        blen = 0
+    else:
+        blen = label[-idx:]
+        label = label[:-idx-1]
+    
+    return nwk_base[1:-1], label, blen
+
+def all_nodes_of_newick_tree(newick, parent_nodes=False):
     """
     Function returns all nodes of a tree passed as Newick string.
     
@@ -267,26 +381,33 @@ def all_nodes_of_binary_tree(newick):
     manner in pieces right until all nodes are extracted.
 
     """
-    
+    # look for bracket already, don't assume they are around the tree! 
     if newick.endswith(';'):
         newick = newick[:-1]
-        
-    out = [newick]
-    queue = [newick[1:-1]]
 
+    # fill the queue
+    nwk, label, blen = label_and_blen(newick)
+    queue = [(nwk, label, blen)]
+    
+    # raise error if the number of brackets doesn't fit
+    nr_opening_brackets = newick.count('(')
+    nr_closing_brackets = newick.count(')')
+    if nr_opening_brackets != nr_closing_brackets:
+        raise ValueError("The number of brackets is wrong!")
+    
     while queue:
                 
         # find un-bracketed part inbetween
-        nwk = queue.pop(0)
+        nwk, label, blen = queue.pop(0)
 
-        brackets = ''
+        brackets = 0
         idxs = [-1]
         for i,k in enumerate(nwk):
 
             if k == '(':
-                brackets += '('
+                brackets += 1
             elif k == ')':
-                brackets = brackets[:-1]
+                brackets -= 1
             
             if not brackets and k == ',':
                 idxs += [i]
@@ -296,30 +417,19 @@ def all_nodes_of_binary_tree(newick):
         for i,idx in enumerate(idxs[1:]):
 
             nwk_tmp = nwk[idxs[i]+1:idx]
-            out += [nwk_tmp]
+            nwk_tmp, label, blen = label_and_blen(nwk_tmp)
 
-            if nwk_tmp.startswith('('):
-                nwk_tmp = nwk_tmp[1:-1]
+            nnwk = clean_newick_string(nwk_tmp)
+            npar = clean_newick_string(nwk)
+
+            nnwk = '('+nnwk+')' if ',' in nnwk else nnwk
+            npar = '('+npar+')' if ',' in npar else npar
+            
+            yield nnwk, label, blen, npar
+
             if ',' in nwk_tmp:
-                queue += [nwk_tmp]
-
                 
-            #    nwkA = nwk[:i]
-            #    nwkB = nwk[i+1:]
-            #    out += [nwkA, nwkB]
-
-            #    if nwkA.startswith('('):
-            #        nwkA = nwkA[1:-1]
-            #    if nwkB.startswith('('):
-            #        nwkB = nwkB[1:-1]
-
-            #    if ',' in nwkA:
-            #        queue += [nwkA]
-            #    if ',' in nwkB:
-            #        queue += [nwkB]
-            #    break
-
-    return out
+                queue += [(nwk_tmp, label, blen)]
 
 def all_rooted_binary_trees(*taxa):
     """
