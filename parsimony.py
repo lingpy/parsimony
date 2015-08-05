@@ -32,8 +32,7 @@ __date__="2015-07-14"
 
 from lingpy import *
 import itertools
-
-
+import newick as nwk
 
 def sankoff_parsimony_up(
         patterns, # the patterns in each taxonomic unit
@@ -48,12 +47,12 @@ def sankoff_parsimony_up(
     # get all characters
 
     # start iteration
-    for node in tree.postorder():
+    for node in tree.postorder:
         
         # name of node for convenience
-        nname = node.Name
+        nname = node
 
-        if node.isTip():
+        if tree[node]['leave']:
 
             W[nname] = {}
             for char in characters:
@@ -71,8 +70,8 @@ def sankoff_parsimony_up(
                 nscores = []
                 
                 # iterate over the children
-                for child in node.Children:
-                    cname = child.Name
+                for child in tree[node]['children']:
+                    cname = child
 
                     scores = []
                     for cchar in characters:
@@ -107,81 +106,58 @@ def sankoff_parsimony_down(
         ):
     
     # get the root
-    root = tree.root().Name
+    root = tree.root
 
     # get the root chars
     smin = min(weights[root].values())
 
     # get the starting chars
     rchars = [a for a,b in weights[root].items() if b == smin]
-
-    # initialize the queue by appending the children of the root
+    
+    # prepare the queue
     queue = []
-    scenario = {}
-    root_scens = [(root,char,[]) for char in rchars]
-    for child in tree.Children:
-        for char in rchars:
-            scenario[root,char] = set()
-            queue += [[child, child.Name, root, char]]
+    for char in rchars:
+        nodes = []
+        for child in tree[tree.root]['children']:
+            nodes += [child]
+        queue += [([(nodes, tree.root, char)], [(tree.root, char)])]
     
-    while queue:
-        
-        # get the children of the root
-        node, name, parent, pchar = queue.pop(0)
-        
-        # get the smalles transition
-        scores = []
-        for char in characters:
-            i = characters.index(pchar)
-            j = characters.index(char)
-            score = transitions[i][j]
-            
-            if weights[parent][pchar] - score == weights[name][char]:
-                scores += [0]
-            else:
-                scores += [1]
-
-        # get the min score
-        smin = min(scores)
-
-        # get the min-chars
-        mchars = [a for a,b in zip(characters,scores) if b == smin]
-        #print(pchar,name,'mchars',mchars,list(zip(scores,characters)))
-
-        # append the children
-        for child in node.Children:
-            for char in mchars:
-                scenario[parent,pchar].add((name,char))
-                scenario[name,char] = set()
-                queue += [
-                        (child, child.Name,name, char)
-                        ]
-
-        if node.isTip():
-            nchars = patterns[taxa.index(name)]
-            for nchar in nchars:
-                scenario[parent,pchar].add((name,nchar))
-                scenario[name,nchar] = set()
-    
-     
-    # now go back and get all scenarios
-    queue = root_scens
+    # prepare the scenarios which are written to output
     outs = []
+    
+    # start the loop
     while queue:
-        node,char,scen = queue.pop()
-        scen += [(node,char)]
 
-        # get the next value
-        children = scenario[node,char]
-        for cnode,cchar in children:
-            queue += [(cnode,cchar,scen)]
-        
-        if len(scen) == len(tree.getNodeNames()):
-            outs += [scen]
-    
-    # reduce duplicates (no idea how they would come up anyway) XXX
-    outs = sorted(set([tuple(sorted(scen)) for scen in outs]))
-    
+        nodes, scenario = queue.pop(0)
+
+        if not nodes:
+            outs += [scenario]
+        else:
+            # get children and parent
+            children, parent, pchar = nodes.pop()
+            pidx = characters.index(pchar)
+
+            # get the best scoring combination for scenario and children
+            pscore = weights[parent][pchar]
+
+            combs = itertools.product(*len(children) * [characters])
+            
+            for comb in combs:
+                score = 0
+                for i,char in enumerate(comb):
+                    cidx = characters.index(char)
+                    score += transitions[pidx][cidx]
+                    score += weights[children[i]][char]
+                
+                if score == pscore:
+                    new_nodes = [n for n in nodes]
+                    new_scenario = [s for s in scenario]
+                    
+                    for child,char in zip(children,comb):
+                        new_nodes += [(tree[child]['children'], child, char)]
+                        new_scenario += [(child, char)]
+
+                    queue += [(new_nodes, new_scenario)]
     return outs
 
 def sankoff_parsimony(
@@ -202,8 +178,8 @@ def sankoff_parsimony(
             )
     
     # get minimal weight
-    smin = min(W[tree.root().Name].values())
-    weights = [b for a,b in W[tree.root().Name].items() if b == smin]
+    smin = min(W[tree.root].values())
+    weights = [b for a,b in W[tree.root].items() if b == smin]
     scenarios = sankoff_parsimony_down(
             W,
             patterns,
@@ -214,222 +190,24 @@ def sankoff_parsimony(
             )
 
     if pprint:
+        tmp_tree = Tree(tree.newick)
+        C = {}
+        for k,v in tmp_tree.getNodesDict().items():
+            C[str(v)[:-1]] = k
+
         for i,out in enumerate(scenarios):
-            tr = tree.asciiArt()
+            tr = tmp_tree.asciiArt()
             for k,v in out:
-                target = v+len(k) * '-'
-                tr = tr.replace(k,target[:len(k)])
+                target = v+len(C[k]) * '-'
+                
+                # get the nodes dict
+                tr = tr.replace(C[k], target[:len(C[k])])
             print(tr)
-            print(weights[i])
+            print(smin)
             print('')
 
     
     return weights, scenarios, W
-
-def ftree(taxlist):
-    """
-    Function returns all possible trees for a given set of taxa.
-    """
-    
-    # initialize queue
-    queue = [[t for t in taxlist]]
-
-    # store trees in this one
-    trees = []
-    
-
-    while queue:
-        
-        taxa = queue.pop(0)
-        
-        if len(taxa) == 1:
-            yield taxa
-        else:
-            # iterate over all pairwise combinations of taxa
-            for a,b in itertools.combinations(taxa,2):
-                
-                # identify the combined elements
-                new_taxa = [t for t in taxa if t not in (a,b)]+[(a,b)]
-
-                queue += [new_taxa]
-    
-    return trees
-
-def clean_newick_string(newick):
-    """
-    Helper function to reduce all branch-lengths from a newick string.
-    """
-    start = newick
-    out = ''
-    
-    while start:
-        idxA = start.find(':') 
-        idxB = start.find(')')
-
-        colon = False
-
-        if idxA != -1 and idxB != -1:
-            if idxA < idxB:
-                idx = idxA
-                colon = True
-            else:
-                idx = idxB
-        elif idxA != -1:
-            idx = idxA
-            colon = True
-        elif idxB != -1:
-            idx = idxB
-        else:
-            return out + start
-        
-        if colon:
-            out += start[:idx]
-            start = start[idx+1:]
-            while start and (start[0].isdigit() or start[0] == '.'):
-                start = start[1:]
-        else:
-            out += start[:idx+1]
-            start = start[idx+1:]
-            while start and start[0] not in ',;)':
-                start = start[1:]
-    
-    out += start
-
-    return out
-
-def parse_newick(newick):
-    """
-    Function parses a newick tree to json format.
-
-    Notes
-    -----
-    The format is a dictionary with sufficient information to further parse the
-    tree, and also to use it as input for d3 and other javascript libraries.
-    """
-    
-    D = {}
-
-    if newick.endswith(';'):
-        newick = newick[:-1]
-    
-    nwk, label, blen = label_and_blen(newick)
-
-    D['('+clean_newick_string(nwk)+')'] = dict(
-            children=[], 
-            branch_length = blen, 
-            root=True,
-            leave=False,
-            label = label
-            )
-
-    for node,label, blen, parent in all_nodes_of_newick_tree(newick):
-
-        D[node] = dict(parent=parent, children=[], branch_length=blen, root=False)
-
-        if ',' in node:
-            D[node]['leave'] = False
-        else:
-            D[node]['leave'] = True
-        
-        D[parent]['children'] += [node]
-
-    return D
-
-def label_and_blen(nwk):
-    """
-    Helper function parses a Newick string and returns the highest-order label
-    and branch-length.
-    """
-    idx = nwk[::-1].find(')')
-
-    # no brackets means we are dealing with a leave node
-    if idx == -1:
-        nwk_base = nwk
-        idx = nwk[::-1].find(':')
-        if idx == -1:
-            return nwk, nwk, '0'
-        else:
-            nwk_base = nwk[:-idx-1]
-            return nwk_base, nwk_base, nwk[-idx:]
-    
-    # if index is 0, there's no label and no blen
-    elif idx == 0:
-        return nwk[1:-1], '', '0'
-
-    # else, we carry on
-    nwk_base = nwk[:-idx]
-    label = nwk[-idx:]
-
-    idx = label[::-1].find(':')
-    if idx == -1:
-        label = label
-        blen = 0
-    else:
-        blen = label[-idx:]
-        label = label[:-idx-1]
-    
-    return nwk_base[1:-1], label, blen
-
-def all_nodes_of_newick_tree(newick, parent_nodes=False):
-    """
-    Function returns all nodes of a tree passed as Newick string.
-    
-    Notes
-    -----
-
-    This function employs a simple search algorithm and splits a tree in binary
-    manner in pieces right until all nodes are extracted.
-
-    """
-    # look for bracket already, don't assume they are around the tree! 
-    if newick.endswith(';'):
-        newick = newick[:-1]
-
-    # fill the queue
-    nwk, label, blen = label_and_blen(newick)
-    queue = [(nwk, label, blen)]
-    
-    # raise error if the number of brackets doesn't fit
-    nr_opening_brackets = newick.count('(')
-    nr_closing_brackets = newick.count(')')
-    if nr_opening_brackets != nr_closing_brackets:
-        raise ValueError("The number of brackets is wrong!")
-    
-    while queue:
-                
-        # find un-bracketed part inbetween
-        nwk, label, blen = queue.pop(0)
-
-        brackets = 0
-        idxs = [-1]
-        for i,k in enumerate(nwk):
-
-            if k == '(':
-                brackets += 1
-            elif k == ')':
-                brackets -= 1
-            
-            if not brackets and k == ',':
-                idxs += [i]
-
-        idxs += [i+1]
-
-        for i,idx in enumerate(idxs[1:]):
-
-            nwk_tmp = nwk[idxs[i]+1:idx]
-            nwk_tmp, label, blen = label_and_blen(nwk_tmp)
-
-            nnwk = clean_newick_string(nwk_tmp)
-            npar = clean_newick_string(nwk)
-
-            nnwk = '('+nnwk+')' if ',' in nnwk else nnwk
-            npar = '('+npar+')' if ',' in npar else npar
-            
-            yield nnwk, label, blen, npar
-
-            if ',' in nwk_tmp:
-                
-                queue += [(nwk_tmp, label, blen)]
 
 def all_rooted_binary_trees(*taxa):
     """
@@ -468,92 +246,58 @@ def all_rooted_binary_trees(*taxa):
             # be nodes which are no longer nodes in the tree, since introducing
             # new nodes may split them up, I have not yet an idea how to catch
             # these cases on the run
-            new_visited = all_nodes_of_binary_tree(new_tree)
+            new_visited = [x[0] for x in
+                    nwk.all_nodes_of_newick_tree(new_tree)]+[new_tree]
 
             if not new_tovisit:
                 yield new_tree+';'
             else:
                 queue += [(new_tree, new_visited, new_tovisit)]
 
+def best_tree_brute_force(
+        patterns,
+        taxa,
+        transitions,
+        characters,
+        proto_forms=False,
+        verbose=False
+        ):
+    """
+    This is an experimental parsimony version that allows for ordered
+    character states.
+    """
 
+    minScore = 1000000000
+    bestTree = []
 
+    for idx,tree in enumerate(all_rooted_binary_trees(*taxa)):
+        t = nwk.LingPyTree(tree)
+        if verbose:
+            print('[{0}] {1}...'.format(idx+1, t.newick))
 
-patterns = [['b'],['c'],['a'],['a'],['b']]
-taxa = ['A','B','C','D','E']
-tree = Tree('(((A,B),(C,D)),E);')
-tree2 = Tree('((A,E),(B,C),D);')
-transitions = [
-         # a b c ø
-        [0, 2, 4, 1], # a
-        [2, 0, 6, 0], # b
-        [4, 6, 0, 10], # c
-        [1, 0, 10, 0], # ø
-        ]
-characters = ['a','b','c',"ø"]
+        score = 0
+        for i,(p,m,c) in enumerate(zip(patterns, transitions, characters)):
+            weights = sankoff_parsimony_up(
+                    p,
+                    taxa,
+                    t,
+                    m,
+                    c
+                    )
+            if not proto_forms:
+                minWeight = min(weights[t.root].values())
+            else:
+                minWeight = weights[t.root][proto_forms[i]]
+                
+            score += minWeight
+            
+            if score > minScore:
+                break
 
-weights, scenarios, W = sankoff_parsimony(patterns, taxa, tree, transitions,
-        characters, pprint=True)
-weights, scenarios, W = sankoff_parsimony(patterns, taxa, tree2, transitions,
-        characters, pprint=True)
+        if score == minScore:
+            bestTree += [(t.newick,score)]
+        elif score < minScore:
+            minScore = score
+            bestTree = [(t.newick,score)]
 
-
-#wmins = {}
-#for t in ftree(taxa):
-#    
-#    t = str(t[0])+';'
-#    w = sankoff_parsimony_up(
-#            patterns,
-#            taxa,
-#            Tree(t),
-#            transitions,
-#            characters
-#            )
-#
-#    wmin = min(w['root'].values())
-#    
-#    wmins[t] = wmin
-#
-#mint = min(wmins.values())
-#gt = [(a,b) for a,b in wmins.items() if b == mint]
-
-
-
-patterns = [['ABB'],['ABB'],['ABB'],['ABB'],['BBB','BCB','BCC','BBC','CCC','CCB','CBC']]
-chars = []
-for p in patterns:
-    chars += p
-chars = sorted(set(chars))
-matrix = [[0 for i in chars] for j in chars]
-taxa = ['Cone','Zhonggu','Thebo','Purik','Shigatse']
-
-def fill_matrix(chars, matrix):
-    for i,a in enumerate(chars):
-        for j,b in enumerate(chars):
-            if i < j:
-                d = edit_dist(a,b)
-                matrix[i][j] = d
-                matrix[j][i] = d
-
-fill_matrix(chars,matrix)
-
-#wmins = {}
-#for t in all_rooted_binary_trees(*taxa):
-#    
-#    w = sankoff_parsimony_up(
-#            patterns,
-#            taxa,
-#            Tree(t),
-#            matrix,
-#            chars
-#            )
-#
-#    wmin = min(w['root'].values())
-#    
-#    wmins[t] = wmin
-#
-#mint = min(wmins.values())
-#gt = [(a,b) for a,b in wmins.items() if b == mint]
-
-
-
-
+    return bestTree, minScore

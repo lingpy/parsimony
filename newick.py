@@ -9,12 +9,19 @@ Newick Module of LingPy for parsing of Newick strings.
 __author__="Johann-Mattis List"
 __date__="2015-07-19"
 
+from lingpy import util
 
 import json
 
+
 def clean_newick_string(newick):
     """
-    Helper function to reduce all branch-lengths from a newick string.
+    Helper function to reduce all branch-lengths from a Newick string.
+
+    Note
+    ----
+    This function "cleans" a Newick string by reducing all of its branch
+    lengths. As a result, the pure topological Newick string is returned.
     """
     start = newick
     out = ''
@@ -56,19 +63,30 @@ def clean_newick_string(newick):
 
 def parse_newick(newick):
     """
-    Function parses a newick tree to json format.
+    Function parses a Newick tree to JSON format.
 
     Notes
     -----
     The format is a dictionary with sufficient information to further parse the
-    tree, and also to use it as input for d3 and other javascript libraries.
-    """
-    
-    D = {}
+    tree, and also to use it as input for d3 and other JavaScript libraries.
 
+    Examples
+    --------
+      
+      >>> from lingpy.basic import newick as nwk
+      >>> a = '((a,b),c);'
+      >>> nwk.parse_newick(a)
+      {'((a,b),c)': {'branch_length': '0', 'children': ['(a,b)', 'c'], 'label': 'root', 'leave': False, 'root': True}, '(a,b)': {'branch_length': '0', 'children': ['a', 'b'], 'label': 'edge_1', 'leave': False, 'parent': '((a,b),c)', 'root': False}, 'a': {'branch_length': '0', 'children': [], 'label': 'a', 'leave': True, 'parent': '(a,b)', 'root': False}, 'b': {'branch_length': '0', 'children': [], 'label': 'b', 'leave': True, 'parent': '(a,b)', 'root': False}, 'c': {'branch_length': '0', 'children': [], 'label': 'c', 'leave': True, 'parent': '((a,b),c)', 'root': False}, 'leaves': ['c', 'a', 'b'], 'nodes': ['((a,b),c)', '(a,b)', 'c', 'a', 'b'], 'root': '((a,b),c)'}
+      
+    """
+    # create the dictionary to host the data
+    D = {}
+    
+    # check for correct newick ending and remove semi-colon in the end
     if newick.endswith(';'):
         newick = newick[:-1]
     
+    # get label and branch length
     nwk, label, blen = label_and_blen(newick)
 
     root = '('+clean_newick_string(nwk)+')'
@@ -82,13 +100,19 @@ def parse_newick(newick):
             branch_length = blen, 
             root=True,
             leave=False,
-            label = label
+            label = label or 'root'
             )
+
+    label_count = 1
 
     for node, label, blen, parent in all_nodes_of_newick_tree(newick):
         D['nodes'] += [node]
 
-        D[node] = dict(parent=parent, children=[], branch_length=blen, root=False)
+        D[node] = dict(parent=parent, children=[], branch_length=blen,
+                root=False, label = label or 'edge_'+str(label_count))
+        
+        if not label:
+            label_count += 1
 
         if ',' in node:
             D[node]['leave'] = False
@@ -102,9 +126,25 @@ def parse_newick(newick):
 
 def label_and_blen(nwk):
     """
-    Helper function parses a Newick string and returns the highest-order label
-    and branch-length.
+    Helper function parses a Newick string and returns the highest-order label and branch-length.
+    
+    Returns
+    -------
+    data : tuple
+        A tuple consisting of the node, deprived of brackets and label, the
+        label of the node, and the branch length. If either of branch length or
+        label is missing, the tuple contains an empty string.
+
+    Examples
+    --------
+
+      >>> from lingpy.basic import newick as nwk
+      >>> nwk.label_and_blen('(a:1,b:2)ab:20')
+      ('a:1,b:2', 'ab', '20')      
+      
     """
+
+    # get the first index of a bracket
     idx = nwk[::-1].find(')')
 
     # no brackets means we are dealing with a leave node
@@ -135,20 +175,42 @@ def label_and_blen(nwk):
     
     return nwk_base[1:-1], label, blen
 
-def all_nodes_of_newick_tree(newick, parent_nodes=False):
+def all_nodes_of_newick_tree(newick):
     """
     Function returns all nodes of a tree passed as Newick string.
     
     Notes
     -----
-
     This function employs a simple search algorithm and splits a tree in binary
     manner in pieces right until all nodes are extracted.
 
+    Examples
+    --------
+    >>> from lingpy.basic import newick as nwk
+    >>> list(nwk.all_nodes_of_newick_tree('((a:1,b:1)ab:2,c:2)abc:3;'))
+    [('(a,b)', 'ab', '2', '((a,b),c)'), ('c', 'c', '2', '((a,b),c)'), ('a', 'a', '1', '(a,b)'), ('b', 'b', '1', '(a,b)')]
+    
+    Raises
+    ------
+    ValueError, if the number of brackets is wrong.
+
+    Returns
+    -------
+    nodes : generator
+        A generator that yields tuples for all nodes of a Newick string. Each
+        tuple contains four entries: The current node in Newick format, the
+        label of the current node, the branch length, and the parent node (root
+        node is not returned). 
+
     """
     # look for bracket already, don't assume they are around the tree! 
+    newick = newick.strip()
     if newick.endswith(';'):
         newick = newick[:-1]
+
+    # check for whitespace in tree and raise error if this is the case
+    if ' ' in newick:
+        raise ValueError('[!] The string contains whitespace which is not allowed!')
 
     # fill the queue
     nwk, label, blen = label_and_blen(newick)
@@ -199,7 +261,13 @@ def all_nodes_of_newick_tree(newick, parent_nodes=False):
 
 def postorder(tree):
     """
-    Carry out a post-order traversal of the tree.
+    Carry out a post-order traversal of a LingPyTree object.
+
+    Notes
+    -----
+    This function carries out a post-order traversal of a LingPyTree object and
+    returns all nodes of the tree in post-order.
+
     """
     
     # make the stack
@@ -209,7 +277,7 @@ def postorder(tree):
     out = []
 
     # make copy of tree
-    ctree = dict([(k,tree[k]['children']) for k in tree['nodes']])
+    ctree = dict([(k,[x for x in tree[k]['children']]) for k in tree['nodes']])
 
     # climb down the tree
 
@@ -230,10 +298,15 @@ def postorder(tree):
     
     return out
 
-class LingpyTree(object):
+class LingPyTree(object):
 
     def __init__(self, newick):
+        """
+        Tree Class for a simple handling of various tree operations, based on Newick as an input format.
 
+        """
+        
+        self.newick = newick
         self._dict = parse_newick(newick)
         self.root = self._dict['root']
         self.nodes = self._dict['nodes']
@@ -242,6 +315,17 @@ class LingpyTree(object):
         self.postorder = postorder(self._dict)
 
     def output(self, dtype, filename=None):
+        """
+        Parameters
+        ----------
+        dtype : str {"json", "html", "nwk" }
+            Specify the type of the output:
+            
+            * *json*: JSON format, suitable for use in d3.
+            * *nwk*: Newick format (identical with input upon initialization).
+            * *html*: Simple interactive HTML-representation with collapsible nodes.
+
+        """
         
         if dtype == 'json':
             if filename:
@@ -249,12 +333,64 @@ class LingpyTree(object):
                     f.write(json.dumps(self._dict, indent=2))
             else:
                 return json.dumps(self._dict, indent=2)
+        
+        elif dtype == 'html':
+           
+            start = '<div id="root" class="node-container">root.content</div>'
+            
+            clean_label = lambda x: ''.join([y for y in x if y not in
+                '();']).replace(',','_')
+
+            template = '<div class="node-container"><div id="#node_name:label" class="node-label">#node_label</div><div class="node-content">#node_children:{node}</div></div>'
+
+            leave = '<div id="#node_leave:label" class="node-leave">#node_leave</div>'
+
+            txt = template.format(node=self.root).replace('#node_label',
+                    self[self.root]['label']).replace('#node_name',
+                            clean_label(self.root))
+            
+            # transform function helps to make the transformation with check
+            # for leave or child
+            transform = lambda x: template.format(node=x).replace('#node_label', \
+                        self[x]['label']).replace('#node_name', clean_label(x)) if \
+                        not self[x]['leave'] else leave.replace( '#node_leave', x)
+
+
+            for i,node in enumerate(self.nodes):
+
+                # write all children
+                children = self[node]['children']
+                
+                node_children = '\n'.join([transform(child) for child in
+                        children])
+                                        
+                txt = txt.replace(
+                        '#node_children:'+node, 
+                        node_children
+                        )
+
+            # get the templates
+            html = util.read_text_file('lexical_change.html')
+            css = util.read_text_file('lexical_change.css')
+            js = util.read_text_file('lexical_change.js')
+            title = 'LingPy Tree Class'
+
+            html = html.format(STYLE=css, SCRIPT=js, TITLE=title, TREE=txt)
+            filename = filename or 'lingpy.basic.newick'
+
+            util.write_text_file(
+                    filename+'.html',
+                    html
+                    )
 
     def __getitem__(self, idx):
+        """
+        Allow for the tree class to be used as a dictionary.
+        """
 
         try:
             return self._dict[idx]
         except:
             raise KeyError(idx)
 
-a = LingpyTree('((a:1,b:2)ab:3,(c:1,d:2)cd:4)abcd;')
+
