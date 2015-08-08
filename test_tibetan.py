@@ -103,49 +103,106 @@ for k in sorted(D):
 
 protos = [C[c] for c in concepts]
 
-a,b = best_tree_brute_force(
-        patterns,
+
+treesA = heuristic_parsimony(
         taxa,
+        patterns,
         matrices,
         chars,
-        verbose=True,
-        proto_forms = protos
+        iterations = 30,
         )
 
-print(Tree(a[0][0]).asciiArt())
-print(b)
-print(len(a))
-        
+treesB = branch_and_bound(
+        taxa,
+        patterns,
+        matrices,
+        chars,
+        )
 
-for t,s in a:
 
-    tree = LingPyTree(t)
-    # get the "proto-form"
-    match = 0
-    smatch = 0
-    mmatch = 0
-    
-    # check parsimony
-    for p,m,c,k in zip(patterns, matrices, chars, concepts):
 
-        W = sankoff_parsimony_up(p,taxa,tree, m, c)
-        
-        smin = min(W[tree.root].values())
-        proto = [a for a,b in W[tree.root].items() if b == smin]
+#a,b = best_tree_brute_force(
+#        patterns,
+#        taxa,
+#        matrices,
+#        chars,
+#        verbose=True,
+#        proto_forms = protos
+#        )
+#
+#print(Tree(a[0][0]).asciiArt())
+#print(b)
+#print(len(a))
+#        
+#
+#for t,s in a:
+#
+#    tree = LingPyTree(t)
+#    # get the "proto-form"
+#    match = 0
+#    smatch = 0
+#    mmatch = 0
+#    
+#    # check parsimony
+#    for p,m,c,k in zip(patterns, matrices, chars, concepts):
+#
+#        W = sankoff_parsimony_up(p,taxa,tree, m, c)
+#        
+#        smin = min(W[tree.root].values())
+#        proto = [a for a,b in W[tree.root].items() if b == smin]
+#
+#        rprot = C[k]
+#
+#        if C[k] in proto:
+#            if len(proto) == 1:
+#                match += 1
+#                #print('[*] '+rprot)
+#            else:
+#                smatch += 1
+#                #print('[+] '+' '.join(proto)+' / '+rprot)
+#        else:
+#            mmatch += 1
+#            #print('[!] '+ ' '.join(proto) + ' / ' + rprot)
+#    
+#    print(Tree(t).asciiArt())
+#    print(t, match, smatch, mmatch)
+   
 
-        rprot = C[k]
+import networkx as nx
 
-        if C[k] in proto:
-            if len(proto) == 1:
-                match += 1
-                #print('[*] '+rprot)
-            else:
-                smatch += 1
-                #print('[+] '+' '.join(proto)+' / '+rprot)
-        else:
-            mmatch += 1
-            #print('[!] '+ ' '.join(proto) + ' / ' + rprot)
-    
+G = nx.Graph()
+for i,tA in enumerate(taxa):
+    for j,tB in enumerate(taxa):
+        if i < j:
+
+            # get score between two taxa
+            all_scores = []
+            for pattern,matrix,charset in zip(patterns, matrices, chars):
+
+                patternA = pattern[i]
+                patternB = pattern[j]
+
+                # calculate minimal weight
+                scores = []
+                for pA in patternA:
+                    pAidx = charset.index(pA)
+                    for pB in patternB:
+                        pBidx = charset.index(pB)
+
+                        score = matrix[pAidx][pBidx]
+                    scores += [score]
+                all_scores += [min(scores)]
+
+            G.add_edge(tA, tB, weight=sum(all_scores))
+
+g = nx.minimum_spanning_tree(G)
+print(sum([w[2]['weight'] for w in g.edges(data=True)]))
+
+
+
+
+for t in treesB[0]:
     print(Tree(t).asciiArt())
-    print(t, match, smatch, mmatch)
-    
+
+
+print(len([t for t in treesA[0] if t.replace('"','') in treesB[0]]))

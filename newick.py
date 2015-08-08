@@ -14,6 +14,107 @@ from lingpy import util
 import json
 
 
+def sort_tree(tree):
+    """
+    Simple method to sort a given tree.
+    """
+    
+    def get_leaves(tree):
+        return [''.join([y for y in x if y not in '();,']) for x in
+                tree.split(',')]
+    nodes = parse_newick(tree)
+
+    out = '{root}'
+
+    queue = [nodes['root']]
+    while queue:
+        node = queue.pop(0)
+        label = nodes[node]['label']
+        
+        # get the children
+        children = nodes[node]['children']
+        if children:
+
+            # sort the children
+            kids = [''.join(sorted(get_leaves(child))) for child in children] 
+
+            # sort children
+            offspring = '('+','.join(['{'+nodes[a]['label']+'}' for a,b in sorted(zip(children, kids),
+                key=lambda x: x[1])])+')'
+            out = out.replace('{'+label+'}', offspring)
+            queue += children
+
+    return ''.join([x for x in out if x not in '{}'])
+
+
+def nodes_in_tree(tree):
+    """
+    This methods yields all nodes in a tree in newick format without labels for
+    nodes and branch lengths being assigned.
+    """
+    
+    stack = [tree[1:-1]]
+    out = [tree]
+
+    yield tree
+    
+    while stack:
+        tmp = stack.pop()
+        brackets = 0
+
+        idx = 0
+        for i,c in enumerate(tmp):
+            if c == '(':
+                brackets += 1
+            elif c == ')':
+                brackets -= 1
+
+            if not brackets and c == ',':
+                tree = tmp[idx:i]
+                idx = i+1
+
+                yield tree
+
+                if tree.startswith('('):
+                    tree = tree[1:-1]
+
+                if ',' in tree:
+                    stack += [tree]
+        
+        tree = tmp[idx:]
+        yield tree
+        if tree.startswith('('):
+            tree = tree[1:-1]
+        
+
+
+        if ',' in tree:
+            stack += [tree]
+
+    return out
+
+def safe_newick_string(newick):
+    
+    if newick.endswith(';'):
+        newick = newick[:-1]
+        
+    newick = clean_newick_string(newick)
+
+    leaves = sorted(
+            [n for n in nodes_in_tree(newick) if ',' not in n],
+            key = lambda x: len(x),
+            reverse = True
+            )
+    
+    for i,leave in enumerate(leaves):
+        
+        newick = newick.replace(leave, '<edge{0}>'.format(i))
+    for i,leave in enumerate(leaves):
+        newick = newick.replace('<edge{0}>'.format(i), '"'+leave+'"')
+
+    return newick
+
+
 def clean_newick_string(newick):
     """
     Helper function to reduce all branch-lengths from a Newick string.
@@ -44,7 +145,8 @@ def clean_newick_string(newick):
         elif idxB != -1:
             idx = idxB
         else:
-            return out + start
+            out += start
+            return out.replace('"','')
         
         if colon:
             out += start[:idx]
@@ -59,7 +161,7 @@ def clean_newick_string(newick):
     
     out += start
 
-    return out
+    return out.replace('"','')
 
 def parse_newick(newick):
     """
@@ -106,21 +208,25 @@ def parse_newick(newick):
     label_count = 1
 
     for node, label, blen, parent in all_nodes_of_newick_tree(newick):
-        D['nodes'] += [node]
+        
+        cnode = clean_newick_string(node)
+        cparent = clean_newick_string(parent)
+        
+        D['nodes'] += [cnode]
 
-        D[node] = dict(parent=parent, children=[], branch_length=blen,
+        D[cnode] = dict(parent=cparent, children=[], branch_length=blen,
                 root=False, label = label or 'edge_'+str(label_count))
         
         if not label:
             label_count += 1
 
         if ',' in node:
-            D[node]['leave'] = False
+            D[cnode]['leave'] = False
         else:
-            D[node]['leave'] = True
-            D['leaves'] += [node]
+            D[cnode]['leave'] = True
+            D['leaves'] += [cnode]
         
-        D[parent]['children'] += [node]
+        D[cparent]['children'] += [cnode]
 
     return D
 
