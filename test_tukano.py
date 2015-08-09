@@ -82,9 +82,10 @@ trees = heuristic_parsimony(
         out['patterns'],
         out['matrix'],
         out['chars'],
-        #lower_bound = 200,
-        guide_tree = "((((((((((Bar,Tat),(Kub,Tan)),Kar),Pis),Tuy,Yur),(Pir,(Tuk,Wan))),((Des,Yup),Sir)),((Kor,(Sek,Sio)),Kue)),Mak),Bas);", #tree.newick,
-        iterations = 20000
+        lower_bound = 200,
+        #guide_tree = "((((((((((Bar,Tat),(Kub,Tan)),Kar),Pis),Tuy,Yur),(Pir,(Tuk,Wan))),((Des,Yup),Sir)),((Kor,(Sek,Sio)),Kue)),Mak),Bas);", #tree.newick,
+        iterations = 50000,
+        sample_steps = 100,
         )
 
 

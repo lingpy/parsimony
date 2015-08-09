@@ -293,6 +293,8 @@ def heuristic_parsimony(
         verbose = True,
         lower_bound = False,
         iterations = 300,
+        sample_steps = 100,
+        log = False,
         ):
     """
     Try to make a branch and bound parsimony calculation.
@@ -300,6 +302,7 @@ def heuristic_parsimony(
     
     if not guide_tree:
         guide_tree = lingpy.basic.tree.random_tree(taxa)
+
 
     lower_bound = 0
     ltree = nwk.LingPyTree(guide_tree)
@@ -314,111 +317,121 @@ def heuristic_parsimony(
             )
     print("[i] Lower Bound (in guide tree):",lower_bound)
 
-    trees = []
-
     # we start doing the same as in the case of the calculation of all rooted
     # trees below
     if len(taxa) <= 2:
         return '('+','.join(taxa)+');'
 
     # make queue with taxa included and taxa to be visited
-    queue = [(guide_tree, lower_bound)]
-
-    visited = []
+    tree = nwk.sort_tree(guide_tree)
+    queue = [(tree, lower_bound)]
+    visited = [tree]
+    trees = [tree]
 
     # create a generator for all rooted binary trees
     gen = all_rooted_binary_trees(*taxa)
-    stop = 0
+    previous = 0
 
-    while queue:
-        
+    while queue:       
+
+        # modify queue
+        queue = sorted(queue, key=lambda x: x[1])
+
+        # check whether tree is in data or not
+        #if tree in visited:
+            
+        # try creating a new tree in three steps:
+        # a) swap the tree
+        # b) make a random tree
+        # c) take a generated tree
+
         # add next taxon
-        tree, bound = queue.pop()
-        
-        #new_tree = swap_tree(tree[:-1])+';' #tree.replace(node, '('+next_taxon+','+node+')')
-        good_tree = False
-        
-        if tree not in visited:
-            new_tree = tree
-            visited += [tree]
-            good_tree = True
-        else:
-            count = 0
-            while True:
-                new_tree = swap_tree(tree[:-1])+';'
-                if new_tree not in visited:
-                    visited += [new_tree]
-                    good_tree = True
-                    break
-                else:
-                    count += 1
-                    if count > 100:
-                        print("[!] Problem in swapping tree, switching to random tree"+tree)
-                        new_tree = nwk.sort_tree(lingpy.basic.tree.random_tree(taxa))
-                        if new_tree not in visited:
-                            visited+=[new_tree]
-                            good_tree = True
-                            print("[i] Found a new random tree.")
-                            break
-                        else:
-                            good_tree = False
-                            break
+        tree, bound = queue.pop(0)
 
-        # parsimony evaluation and lower bound comes here
-        if good_tree:
+        if tree.endswith(';'):
+            tree = tree[:-1]
+        
+        forest = []
+
+        # try and get the derivations from the best trees
+        for i in range(4 * len(taxa)):
+            new_tree = swap_tree(random.choice(trees))
+            if new_tree not in visited:
+                forest += [new_tree]
+                visited += [new_tree]
+            if previous < len(visited) and len(visited) % sample_steps == 0:
+                print("[i] Investigated {0} trees so far, currently holding {1} trees with best score of {2}.".format(len(visited), len(trees), lower_bound)) 
+                previous = len(visited)
+        
+        for i in range(len(taxa)):
+            new_tree = swap_tree(tree)
+            if new_tree not in visited:
+                forest += [new_tree]
+                visited += [new_tree]
+            if previous < len(visited) and len(visited) % sample_steps == 0:
+                print("[j] Investigated {0} trees so far, currently holding {1} trees with best score of {2}.".format(len(visited), len(trees), lower_bound)) 
+                previous = len(visited)    
+
+        # go on with b
+        for i in range(len(taxa) // 2):
+            new_tree = nwk.sort_tree(lingpy.basic.tree.random_tree(taxa))
+            if new_tree not in visited:
+                forest += [new_tree]
+                visited += [new_tree]
+            if previous < len(visited) and len(visited) % sample_steps == 0:
+                print("[k] Investigated {0} trees so far, currently holding {1} trees with best score of {2}.".format(len(visited), len(trees), lower_bound)) 
+                previous = len(visited)
+
+        for i in range(1 * len(taxa) // 4):
+            new_tree = nwk.sort_tree(next(gen))
+            if new_tree not in visited:
+                forest += [new_tree]
+                visited += [new_tree]
+            if previous < len(visited) and len(visited) % sample_steps == 0:
+                print("[l] Investigated {0} trees so far, currently holding {1} trees with best score of {2}.".format(len(visited), len(trees), lower_bound)) 
+                previous = len(visited)
+
+        best_scores = []
+        for tree in forest:
             score = 0
-            ltree = nwk.LingPyTree(new_tree)
+            lp_tree = nwk.LingPyTree(tree)
             for p,t,c in zip(patterns, transitions, characters):
-
                 weight,chars  = sankoff_parsimony_up(
                         p,
                         taxa,
-                        ltree,
+                        lp_tree,
                         t,
                         c,
                         weight_and_chars =True
                         )
                 score += weight
 
-            if score <= lower_bound:
-                queue += [(new_tree, score)]
-                
-                if verbose:
-                    print("[i] Checked a full tree with score {0}, having visited {1} trees...".format(score, len(visited)))
-                    #print("[i] {0}".format(new_tree))
-                if score < lower_bound:
-                    lower_bound = score
-                    trees = [new_tree]
-                    queue = [q for q in queue if q[1] <= lower_bound]
-                else:
-                    if new_tree not in trees:
-                        trees += [new_tree]
-            else:
-                #tscore = sankoff_parsimony_up(
-                #        p,
-                #        taxa,
-                #        nwk.LingPyTree(tree),
-                #        t,
-                #        c,
-                #        weight_only = True
-                #        )
-                #if score < lower_bound:
-                if stop < len(taxa) * 20:
-                    queue += [(tree, score)]
-                    stop += 1
-                else:
-                    stop = 0
-                #else:
-                    print("Generated tree")
-                    tree = next(gen)
-                    queue += [(nwk.sort_tree(tree)+';', lower_bound)]
-         
-        else:
-            print("[i] Using a generated tree...")
-            queue += [(nwk.sort_tree(next(gen)), lower_bound)]
+            # append stuff to queue
+            best_scores += [(tree, score)]
+
+        for k in sorted(best_scores, key=lambda x:
+                x[1])[:len(best_scores) // 4]:
+            queue += [(k[0], k[1])]
+            
+            if k[1] < lower_bound:
+                trees = [tree]
+                lower_bound = k[1]
+            elif k[1] == lower_bound:
+                trees += [tree]
 
         if len(visited) > iterations:
-            break
+            answer = input("[?] Number of chosen iterations is reached, do you want to go on with the analysis? y/n ")
+            if answer == 'y':
+                while True:
+                    number = input("[?] How many iterations? ")
+                    try:
+                        number = int(number)
+                        iterations += number
+                        break
+                    except:
+                        pass
+            else:
+                break
 
     return trees, lower_bound
 
@@ -430,6 +443,7 @@ def branch_and_bound(
         guide_tree = False,
         verbose = True,
         lower_bound = False,
+        sample_steps = 100,
         ):
     """
     Try to make a branch and bound parsimony calculation.
@@ -440,38 +454,6 @@ def branch_and_bound(
         pass
     elif not guide_tree:
         lower_bound = mst_weight(taxa, patterns, transitions, characters) * 2
-        #lower_bound = 0
-        #
-        ## we choose the character which provoces least of the changes in case it
-        ## is retained until the end in order to determine the lower bound
-        #for p,t,c in zip(patterns, transitions, characters):
-        #    
-        #    # summarize the scores for all characters
-        #    all_scores = []
-
-        #    # iterate over the chars
-        #    for i,char in enumerate(c):
-        #        
-        #        # store the scores for all taxa for the given character
-        #        scores = []
-        #        for j,taxon in enumerate(taxa):
-        #            
-        #            # get the pattern 
-        #            pattern = p[j]
-        #            pidxs = [c.index(pt) for pt in pattern]
-
-        #            # choose the best pattern in case multiple solutions are
-        #            # given
-        #            score = min([t[i][pidx] for pidx in pidxs])
-
-        #            # append the score to the scores for all characters
-        #            scores += [score]
-
-        #        # append the sum to the scores for all characters
-        #        all_scores += [sum(scores)]
-        #    
-        #    # increase lower bound by adding the minimal amount for all scores
-        #    lower_bound += min(all_scores)
 
         print("[i] Lower Bound (estimated):", lower_bound)
     else:
@@ -499,23 +481,26 @@ def branch_and_bound(
     queue = [('('+','.join(taxa[:2])+')', taxa[2:], lower_bound)]
 
     visited = 0
+    all_trees = []
+    previous = 0
 
     M = {}
 
     while queue:
+        queue = sorted(queue, key = lambda x: (len(x[1]), x[2]))
         
         # add next taxon
-        tree, rest, bound = queue.pop()
+        tree, rest, bound = queue.pop(0)
         
         if rest:
             next_taxon = rest.pop()
-
+            nodes = list(nwk.nodes_in_tree(tree))
+            random.shuffle(nodes)
             for node in nwk.nodes_in_tree(tree):
                 new_tree = tree.replace(node, '('+next_taxon+','+node+')')
                 visited += 1
 
                 # parsimony evaluation and lower bound comes here
-                
                 score = 0
                 ltree = nwk.LingPyTree(new_tree)
                 for p,t,c in zip(patterns, transitions, characters):
@@ -537,38 +522,29 @@ def branch_and_bound(
                         mst = mst_weight(rest, patterns, transitions, characters)
                         M[tuple(rest)] = mst
                     score += mst
-
-                ## sum up the score of partial trees by using the matrix and the
-                ## missing taxa in the minimal column
-                #if rest:
-                #    alt_lb = 0
-                #    # get lower bound for remaining taxa
-                #    for p,t,c in zip(patterns, transitions, characters):
-                #        all_scores = []
-                #        for i,char in enumerate(c):
-                #            scores = []
-                #            for taxon in rest:
-
-                #                tidx = taxa.index(taxon)
-                #                pidxs = [c.index(pt) for pt in p[tidx]]
-                #                score = min([t[i][pidx] for pidx in pidxs])
-                #                scores += [score]
-                #            all_scores += [sum(scores)]
-                #        alt_lb += min(all_scores)
-                #    score += alt_lb
+                
+                else:
+                    all_trees += [new_tree]
 
                 if score <= lower_bound:
-                    queue += [(new_tree, [r for r in rest], score)]
+                    r = [x for x in rest]
+                    random.shuffle(r)
+                    queue += [(new_tree, r, score)]
                     
                     if not rest:
-                        if verbose:
-                            print("[i] Checked a full tree with score {0}, having visited {1} subtrees...".format(score, visited))
                         if score < lower_bound:
                             lower_bound = score
                             trees = [nwk.sort_tree(new_tree)]
                             queue = [q for q in queue if q[2] <= lower_bound]
                         else:
                             trees += [nwk.sort_tree(new_tree)]
+                if len(all_trees) % sample_steps == 0 and len(all_trees) > previous:
+                    print("[i] Checked {0} trees so far, current lower bound is {1} with {2} best trees.".format(
+                        len(all_trees),
+                        lower_bound,
+                        len(trees)
+                        ))
+                    previous = len(all_trees)
 
     return trees, lower_bound
 
@@ -597,11 +573,15 @@ def all_rooted_binary_trees(*taxa):
 
         if rest:
             next_taxon = rest.pop()
-
-            for node in nwk.nodes_in_tree(tree):
+            
+            nodes = list(nwk.nodes_in_tree(tree))
+            random.shuffle(nodes)
+            for node in nodes: 
                 new_tree = tree.replace(node, '('+next_taxon+','+node+')')
-
-                queue += [(new_tree, [r for r in rest])]
+                
+                r = [x for x in rest]
+                random.shuffle(r)
+                queue += [(new_tree, r)]
                 if not rest:
                     yield new_tree
 
