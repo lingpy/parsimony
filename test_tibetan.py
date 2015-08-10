@@ -104,22 +104,65 @@ for k in sorted(D):
 protos = [C[c] for c in concepts]
 
 
-treesA = heuristic_parsimony(
+
+
+#treesC,score = best_tree_brute_force(
+#        patterns,
+#        taxa,
+#        matrices,
+#        chars,
+#        verbose=True
+#        )
+#print(treesC)
+treesA,score = heuristic_parsimony(
         taxa,
         patterns,
         matrices,
         chars,
-        iterations = 30,
+        iterations = 100,
+        sample_steps = 10,
         )
 
-treesB = branch_and_bound(
+treesB,score = branch_and_bound(
         taxa,
         patterns,
         matrices,
         chars,
+        sample_steps = 10,
         )
 
 
+print("TREES A")
+for tree in sorted(treesA):
+    score = 0
+    for i,(p,m,c) in enumerate(zip(patterns, matrices, chars)):
+        w = sankoff_parsimony_up(
+                p,
+                taxa,
+                nwk.LingPyTree(tree),
+                m,
+                c,
+                weight_only = True
+                )
+        score += w
+    print(score, tree)
+            
+print("TREES B")
+for tree in sorted(treesB):
+    score = 0
+    for i,(p,m,c) in enumerate(zip(patterns, matrices, chars)):
+        w = sankoff_parsimony_up(
+                p,
+                taxa,
+                nwk.LingPyTree(tree),
+                m,
+                c,
+                weight_only = True,
+                )
+        score += w
+    print(score, tree)
+
+print(len([t for t in treesA if t in treesB]))
 
 #a,b = best_tree_brute_force(
 #        patterns,
@@ -168,41 +211,41 @@ treesB = branch_and_bound(
 #    print(t, match, smatch, mmatch)
    
 
-import networkx as nx
-
-G = nx.Graph()
-for i,tA in enumerate(taxa):
-    for j,tB in enumerate(taxa):
-        if i < j:
-
-            # get score between two taxa
-            all_scores = []
-            for pattern,matrix,charset in zip(patterns, matrices, chars):
-
-                patternA = pattern[i]
-                patternB = pattern[j]
-
-                # calculate minimal weight
-                scores = []
-                for pA in patternA:
-                    pAidx = charset.index(pA)
-                    for pB in patternB:
-                        pBidx = charset.index(pB)
-
-                        score = matrix[pAidx][pBidx]
-                    scores += [score]
-                all_scores += [min(scores)]
-
-            G.add_edge(tA, tB, weight=sum(all_scores))
-
-g = nx.minimum_spanning_tree(G)
-print(sum([w[2]['weight'] for w in g.edges(data=True)]))
-
-
-
-
-for t in treesB[0]:
-    print(Tree(t).asciiArt())
-
-
-print(len([t for t in treesA[0] if t.replace('"','') in treesB[0]]))
+#import networkx as nx
+#
+#G = nx.Graph()
+#for i,tA in enumerate(taxa):
+#    for j,tB in enumerate(taxa):
+#        if i < j:
+#
+#            # get score between two taxa
+#            all_scores = []
+#            for pattern,matrix,charset in zip(patterns, matrices, chars):
+#
+#                patternA = pattern[i]
+#                patternB = pattern[j]
+#
+#                # calculate minimal weight
+#                scores = []
+#                for pA in patternA:
+#                    pAidx = charset.index(pA)
+#                    for pB in patternB:
+#                        pBidx = charset.index(pB)
+#
+#                        score = matrix[pAidx][pBidx]
+#                    scores += [score]
+#                all_scores += [min(scores)]
+#
+#            G.add_edge(tA, tB, weight=sum(all_scores))
+#
+#g = nx.minimum_spanning_tree(G)
+#print(sum([w[2]['weight'] for w in g.edges(data=True)]))
+#
+#
+#
+#
+#for t in treesB[0]:
+#    print(Tree(t).asciiArt())
+#
+#
+#print(len([t for t in treesA[0] if t.replace('"','') in treesB[0]]))

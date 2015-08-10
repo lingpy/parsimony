@@ -107,10 +107,10 @@ def safe_newick_string(newick):
             )
     
     for i,leave in enumerate(leaves):
-        
-        newick = newick.replace(leave, '<edge{0}>'.format(i))
+        newick = newick.replace(leave, '<{0}>'.format(i))
+
     for i,leave in enumerate(leaves):
-        newick = newick.replace('<edge{0}>'.format(i), '"'+leave+'"')
+        newick = newick.replace('<{0}>'.format(i), '"'+leave+'"')
 
     return newick
 

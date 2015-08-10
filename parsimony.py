@@ -101,6 +101,7 @@ def sankoff_parsimony_up(
     
     if weight_only:
         return min(W[tree.root].values())
+    
     if weight_and_chars:
         minw = min(W[tree.root].values())
         minchars = [x for x,y in W[tree.root].items() if y == minw]
@@ -251,7 +252,7 @@ def swap_tree(tree):
     tree = tree.replace('#dummyA#', nodeB)
     tree = tree.replace('#dummyB#', nodeA)
 
-    return nwk.sort_tree(tree)
+    return nwk.sort_tree(tree).replace('"','')
 
 def mst_weight(
         taxa,
@@ -297,7 +298,44 @@ def heuristic_parsimony(
         log = False,
         ):
     """
-    Try to make a branch and bound parsimony calculation.
+    Try to make a heuristic parsimony calculation.
+
+    Note
+    ----
+    This calculation uses the following heuristic to quickly walk through the
+    tree space:
+
+    1. Start from a guide tree or a random tree provided by the user.
+    2. In each iteration step, create new trees and use them, if they are not
+       already visited:
+       1. Create a certain amount of trees by swapping the trees which currently
+          have the best scores.
+       2. Create a certain amount of trees by swapping the trees which
+          have very good scores (one forth of the best trees of each run) from the
+          queue.
+       3. Create a certain amount of random trees to search also in different
+          regions of the tree space and increase the chances of finding another
+          maximum.
+       4. Take a certain amount of random samples from a tree-generator which will successively
+          produce all possible trees in a randomized order.
+    3. In each iteration, a larger range of trees (around 100, depending on the
+       number of taxonomic units) is created and investigated. Once this is done,
+       the best 25% of the results are appended to the queue. A specific array
+       stores the trees with minimal scores and updates them successively. The
+       queue is re-ordered in each iteration step, according to the score of the
+       trees in the queue. The proportion of trees which are harvested from the
+       four different procedures will change depending on the number of trees
+       with currently minimal scores. If there are very many trees with minimal
+       score, the algorithm will increase the number of random trees in order
+       to broaden the search. If the number of optimal trees is small, the
+       algorithm tries to stick to those few trees in order to find their
+       optimal neighbors.
+
+    This procedure allows to search the tree space rather efficiently, and for
+    smaller datasets, it optimizes rather satisfyingly. Unless one takes as
+    many iterations as there are possible trees in the data, however, this
+    procedure is never guaranteed to find the best tree or the best trees.
+
     """
     
     if not guide_tree:
@@ -353,8 +391,17 @@ def heuristic_parsimony(
         
         forest = []
 
+
+        # determine proportions, depending on the number of optimal trees
+        if len(trees) < 50:
+            props = [4,1,0.5,0.25]
+        elif len(trees) < 100:
+            props = [2,1,0.5,0.5]
+        elif len(trees) >= 100:
+            props = [1,1,1,1]
+
         # try and get the derivations from the best trees
-        for i in range(4 * len(taxa)):
+        for i in range(int(props[0] * len(taxa)) or 5):
             new_tree = swap_tree(random.choice(trees))
             if new_tree not in visited:
                 forest += [new_tree]
@@ -363,7 +410,7 @@ def heuristic_parsimony(
                 print("[i] Investigated {0} trees so far, currently holding {1} trees with best score of {2}.".format(len(visited), len(trees), lower_bound)) 
                 previous = len(visited)
         
-        for i in range(len(taxa)):
+        for i in range(int(props[1] * len(taxa)) or 5):
             new_tree = swap_tree(tree)
             if new_tree not in visited:
                 forest += [new_tree]
@@ -373,7 +420,7 @@ def heuristic_parsimony(
                 previous = len(visited)    
 
         # go on with b
-        for i in range(len(taxa) // 2):
+        for i in range(int(props[2] * len(taxa)) or 5):
             new_tree = nwk.sort_tree(lingpy.basic.tree.random_tree(taxa))
             if new_tree not in visited:
                 forest += [new_tree]
@@ -381,46 +428,71 @@ def heuristic_parsimony(
             if previous < len(visited) and len(visited) % sample_steps == 0:
                 print("[k] Investigated {0} trees so far, currently holding {1} trees with best score of {2}.".format(len(visited), len(trees), lower_bound)) 
                 previous = len(visited)
+        
+        # be careful with stop of iteration when using this function, so we
+        # need to add a try-except statement here
+        for i in range(int(props[3] * len(taxa)) or 5):
+            try:
+                new_tree = nwk.sort_tree(next(gen))
+                if new_tree not in visited:
+                    forest += [new_tree]
+                    visited += [new_tree]
+                if previous < len(visited) and len(visited) % sample_steps == 0:
+                    print("[l] Investigated {0} trees so far, currently holding {1} trees with best score of {2}.".format(len(visited), len(trees), lower_bound)) 
+                    previous = len(visited)
+            except StopIteration:
+                pass
 
-        for i in range(1 * len(taxa) // 4):
-            new_tree = nwk.sort_tree(next(gen))
-            if new_tree not in visited:
-                forest += [new_tree]
-                visited += [new_tree]
-            if previous < len(visited) and len(visited) % sample_steps == 0:
-                print("[l] Investigated {0} trees so far, currently holding {1} trees with best score of {2}.".format(len(visited), len(trees), lower_bound)) 
-                previous = len(visited)
+        # check whether forest is empty, if this is the case, try to exhaust it
+        # by adding new items from the iteration process, and do this, until
+        # the iterator is exhausted, to make sure that the exact number of
+        # possible trees as wished by the user is also tested
+        if not forest:
+            while True:
+                try:
+                    new_tree = nwk.sort_tree(next(gen))
+                    if new_tree not in visited:
+                        visited += [new_tree]
+                        forest += [new_tree]
+                        break
+                except StopIteration:
+                    break
 
         best_scores = []
         for tree in forest:
             score = 0
             lp_tree = nwk.LingPyTree(tree)
             for p,t,c in zip(patterns, transitions, characters):
-                weight,chars  = sankoff_parsimony_up(
+                weight  = sankoff_parsimony_up(
                         p,
                         taxa,
                         lp_tree,
                         t,
                         c,
-                        weight_and_chars =True
+                        weight_only =True
                         )
                 score += weight
 
             # append stuff to queue
             best_scores += [(tree, score)]
-
-        for k in sorted(best_scores, key=lambda x:
-                x[1])[:len(best_scores) // 4]:
-            queue += [(k[0], k[1])]
+        
+        # important to include at least one of the trees to the queue,
+        # otherwise the program terminates at points where we don't want it to
+        # terminate
+        for tree,score in sorted(best_scores, key=lambda x:
+                x[1])[:len(best_scores) // 4 or 1]:
+            queue += [(tree, score)]
             
-            if k[1] < lower_bound:
+            if score < lower_bound:
                 trees = [tree]
-                lower_bound = k[1]
-            elif k[1] == lower_bound:
+                lower_bound = score
+            elif score == lower_bound:
                 trees += [tree]
-
+        
+        # check before terminating whether more iterations should be carried
+        # out (in case scores are not satisfying)
         if len(visited) > iterations:
-            answer = input("[?] Number of chosen iterations is reached, do you want to go on with the analysis? y/n ")
+            answer = input("[?] Number of chosen iterations is reached, do you want to go on with the analysis? y/n ").strip().lower()
             if answer == 'y':
                 while True:
                     number = input("[?] How many iterations? ")
@@ -626,10 +698,10 @@ def best_tree_brute_force(
                 break
 
         if score == minScore:
-            bestTree += [(t.newick,score)]
+            bestTree += [nwk.sort_tree(t.newick)]
         elif score < minScore:
             minScore = score
-            bestTree = [(t.newick,score)]
+            bestTree = [nwk.sort_tree(t.newick)]
 
     return bestTree, minScore
 
