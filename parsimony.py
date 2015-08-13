@@ -383,11 +383,6 @@ def heuristic_parsimony(
         # b) make a random tree
         # c) take a generated tree
 
-        # add next taxon
-        tree, bound = queue.pop(0)
-
-        if tree.endswith(';'):
-            tree = tree[:-1]
         
         forest = []
 
@@ -411,12 +406,22 @@ def heuristic_parsimony(
                 previous = len(visited)
         
         for i in range(int(props[1] * len(taxa)) or 5):
+            
+            # we change the new tree at a certain number of steps
+            if i % (len(taxa) // 4 or 2) == 0:
+                try:
+                    tree, bound = queue.pop(0)
+                    if tree.endswith(';'):
+                        tree = tree[:-1]
+                except IndexError:
+                    pass
+
             new_tree = swap_tree(tree)
             if new_tree not in visited:
                 forest += [new_tree]
                 visited += [new_tree]
             if previous < len(visited) and len(visited) % sample_steps == 0:
-                print("[j] Investigated {0} trees so far, currently holding {1} trees with best score of {2}.".format(len(visited), len(trees), lower_bound)) 
+                print("[i] Investigated {0} trees so far, currently holding {1} trees with best score of {2}.".format(len(visited), len(trees), lower_bound)) 
                 previous = len(visited)    
 
         # go on with b
@@ -426,7 +431,7 @@ def heuristic_parsimony(
                 forest += [new_tree]
                 visited += [new_tree]
             if previous < len(visited) and len(visited) % sample_steps == 0:
-                print("[k] Investigated {0} trees so far, currently holding {1} trees with best score of {2}.".format(len(visited), len(trees), lower_bound)) 
+                print("[i] Investigated {0} trees so far, currently holding {1} trees with best score of {2}.".format(len(visited), len(trees), lower_bound)) 
                 previous = len(visited)
         
         # be careful with stop of iteration when using this function, so we
@@ -438,7 +443,7 @@ def heuristic_parsimony(
                     forest += [new_tree]
                     visited += [new_tree]
                 if previous < len(visited) and len(visited) % sample_steps == 0:
-                    print("[l] Investigated {0} trees so far, currently holding {1} trees with best score of {2}.".format(len(visited), len(trees), lower_bound)) 
+                    print("[i] Investigated {0} trees so far, currently holding {1} trees with best score of {2}.".format(len(visited), len(trees), lower_bound)) 
                     previous = len(visited)
             except StopIteration:
                 pass
@@ -706,49 +711,4 @@ def best_tree_brute_force(
     return bestTree, minScore
 
 
-
-#def nodes_in_tree(tree):
-#    """
-#    This methods yields all nodes in a tree in newick format without labels for
-#    nodes and branch lengths being assigned.
-#    """
-#
-#    stack = [tree[1:-1]]
-#    out = [tree]
-#
-#    yield tree
-#    
-#    while stack:
-#        tmp = stack.pop()
-#        brackets = 0
-#
-#        idx = 0
-#        for i,c in enumerate(tmp):
-#            if c == '(':
-#                brackets += 1
-#            elif c == ')':
-#                brackets -= 1
-#
-#            if not brackets and c == ',':
-#                tree = tmp[idx:i]
-#                idx = i+1
-#
-#                yield tree
-#
-#                if tree.startswith('('):
-#                    tree = tree[1:-1]
-#
-#                if ',' in tree:
-#                    stack += [tree]
-#        
-#        tree = tmp[idx:]
-#        if tree.startswith('('):
-#            tree = tree[1:-1]
-#        
-#        yield tree
-#
-#        if ',' in tree:
-#            stack += [tree]
-#
-#    return out
 

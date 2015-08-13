@@ -185,6 +185,7 @@ def parse_newick(newick):
     D = {}
     
     # check for correct newick ending and remove semi-colon in the end
+    newick = newick.strip()
     if newick.endswith(';'):
         newick = newick[:-1]
     
@@ -215,7 +216,7 @@ def parse_newick(newick):
         D['nodes'] += [cnode]
 
         D[cnode] = dict(parent=cparent, children=[], branch_length=blen,
-                root=False, label = label or 'edge_'+str(label_count))
+                root=False, label=label or 'edge_'+str(label_count))
         
         if not label:
             label_count += 1
@@ -420,7 +421,7 @@ class LingPyTree(object):
         self.preorder = self.nodes
         self.postorder = postorder(self._dict)
 
-    def output(self, dtype, filename=None):
+    def output(self, dtype, filename=None, labels=None):
         """
         Parameters
         ----------
@@ -441,25 +442,28 @@ class LingPyTree(object):
                 return json.dumps(self._dict, indent=2)
         
         elif dtype == 'html':
+
+            # make simple label function
+            get_label = lambda x: labels[x] if labels else x
            
             start = '<div id="root" class="node-container">root.content</div>'
             
-            clean_label = lambda x: ''.join([y for y in x if y not in
-                '();']).replace(',','_')
+            clean_label = lambda x: ''.join([y for y in sort_tree(x) if y not in '();']).replace(',','_')
 
             template = '<div class="node-container"><div id="#node_name:label" class="node-label">#node_label</div><div class="node-content">#node_children:{node}</div></div>'
 
-            leave = '<div id="#node_leave:label" class="node-leave">#node_leave</div>'
+            leave = '<div id="#node_leave:label" class="node-leave"><div class="inner_leave">#node_leave</div></div>'
 
             txt = template.format(node=self.root).replace('#node_label',
-                    self[self.root]['label']).replace('#node_name',
+                    get_label(self[self.root]['label'])).replace('#node_name',
                             clean_label(self.root))
             
             # transform function helps to make the transformation with check
             # for leave or child
             transform = lambda x: template.format(node=x).replace('#node_label', \
-                        self[x]['label']).replace('#node_name', clean_label(x)) if \
-                        not self[x]['leave'] else leave.replace( '#node_leave', x)
+                        get_label(self[x]['label'])).replace('#node_name', clean_label(x)) if \
+                        not self[x]['leave'] else leave.replace( '#node_leave',
+                                get_label(x))
 
 
             for i,node in enumerate(self.nodes):
